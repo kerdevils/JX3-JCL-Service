@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from app.convert import JclConvertError, VALID_TARGET_LEVELS, convert_jcl
 from app.models import ConvertResponse, ErrorDetail
 
-MAX_FILE_SIZE = 25 * 1024 * 1024
+MAX_FILE_SIZE = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".jcl", ".txt"}
 _executor = ThreadPoolExecutor(max_workers=2)
 logger = logging.getLogger("jx3_jcl_service")
@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="JX3 JCL Conversion Service",
+    title="无方 JCL 转换服务",
     version="0.1.0",
     lifespan=lifespan,
 )

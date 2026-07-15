@@ -23,6 +23,8 @@ class TestIndexPage:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
+        assert "战斗时间(秒)" in resp.text
+        assert "/ 16" in resp.text
 
 
 class TestJclConvertEndpoint:
@@ -49,7 +51,7 @@ class TestJclConvertEndpoint:
         assert "empty" in resp.json()["detail"].lower()
 
     def test_rejects_oversized_file(self):
-        big = b"x" * (26 * 1024 * 1024)
+        big = b"x" * (51 * 1024 * 1024)
         resp = client.post(
             "/v1/jcl/convert",
             files={"file": ("big.jcl", big, "application/octet-stream")},
