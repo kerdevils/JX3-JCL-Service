@@ -2,11 +2,15 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY jx3-jcl-service/requirements.txt .
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 https://github.com/kerdevils/Formulator.git /app/formulator
+
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY Formulator/ /app/formulator/
-COPY jx3-jcl-service/app/ /app/app/
+COPY app/ /app/app/
 
 ENV FORMULATOR_PATH=/app/formulator
 ENV PYTHONPATH=/app
