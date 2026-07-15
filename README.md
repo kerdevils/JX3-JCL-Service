@@ -1,8 +1,8 @@
-# JX3 JCL Conversion Service
+# 无方 JCL 转换工具
 
-独立 Web 服务，将剑网3 JCL 战斗日志转换为 jx3dps-online 兼容的 JSON 格式。
+独立 Web 服务，将剑网3 无方心法 JCL 战斗日志转换为 jx3dps-online 兼容的 JSON 格式。
 
-当前支持心法：**无方 (10627)**
+当前支持心法：**无方 (10627) (PC 端)**
 
 ## 功能
 
@@ -29,9 +29,9 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| file | File | 是 | .jcl 或 .txt 文件, 最大 25 MiB |
+| file | File | 是 | .jcl 或 .txt 文件, 最大 50 MiB |
 | target_level | int | 否 | 目标等级 (131-134), 默认 134 |
-| max_time | float | 否 | 战斗最大时间(秒), 不填则使用完整时间 |
+| max_time | float | 否 | 战斗最大时间(秒), 不填则使用脱战时间 |
 | player_id | str | 否 | 玩家 ID, 不填则自动选择第一个无方 |
 
 ### GET /v1/health
