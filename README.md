@@ -21,6 +21,17 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 
 浏览器打开 `http://localhost:8080` 使用 Web 界面。
 
+## Windows 本地版
+
+可构建无需安装 Python 的 Windows 一键版。打包机需要将 `Formulator/` 与本项目放在同一父目录。
+
+```bash
+pip install -r requirements-build.txt
+python build_local.py
+```
+
+构建结果为单文件 `dist/JX3-JCL-Converter.exe`。将该文件发给其他 Windows 用户即可；双击后会启动本地服务并自动打开浏览器。使用期间请保持控制台窗口开启，按 `Ctrl+C` 停止服务。默认端口为 8090；若端口被占用，可在命令行运行 `set JX3_JCL_PORT=8091 && JX3-JCL-Converter.exe`。
+
 ## API
 
 ### POST /v1/jcl/convert

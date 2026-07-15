@@ -10,3 +10,6 @@ dist/
 response*.json
 resp*.json
 .DS_Store
+build/
+dist/
+*.spec
