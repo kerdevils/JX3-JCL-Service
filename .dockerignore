@@ -8,3 +8,4 @@ dist/
 .github/
 node_modules/
 *.jcl
+.cloudflare.env
