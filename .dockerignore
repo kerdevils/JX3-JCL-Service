@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+*.egg-info/
+dist/
+.git/
+.github/
+node_modules/
+*.jcl

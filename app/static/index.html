@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JX3 JCL 转换工具</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1419;color:#e7e9ea;min-height:100vh}
+.container{max-width:900px;margin:0 auto;padding:24px 16px}
+header{text-align:center;padding:40px 0 32px}
+header h1{font-size:28px;font-weight:700;color:#fff;margin-bottom:8px}
+header p{color:#71767b;font-size:14px}
+.card{background:#1a1f26;border:1px solid #2f3336;border-radius:16px;padding:24px;margin-bottom:16px}
+.upload-area{border:2px dashed #2f3336;border-radius:12px;padding:40px 24px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+.upload-area:hover,.upload-area.dragover{border-color:#1d9bf0;background:rgba(29,155,240,.05)}
+.upload-area svg{width:48px;height:48px;color:#71767b;margin-bottom:12px}
+.upload-area p{margin:4px 0;font-size:14px}
+.upload-area .hint{color:#71767b}
+.form-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}
+.form-group{flex:1;min-width:180px}
+.form-group label{display:block;font-size:13px;color:#71767b;margin-bottom:6px}
+.form-group input,.form-group select{width:100%;padding:8px 12px;background:#0f1419;border:1px solid #2f3336;border-radius:8px;color:#e7e9ea;font-size:14px;outline:none;transition:border-color .2s}
+.form-group input:focus,.form-group select:focus{border-color:#1d9bf0}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border:none;border-radius:9999px;font-size:14px;font-weight:600;cursor:pointer;transition:background .2s,opacity .2s}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:#1d9bf0;color:#fff}
+.btn-primary:hover:not(:disabled){background:#1a8cd8}
+.btn-danger{background:transparent;color:#f4212e;border:1px solid #f4212e}
+.btn-danger:hover:not(:disabled){background:rgba(244,33,46,.1)}
+.btn-success{background:transparent;color:#00ba7c;border:1px solid #00ba7c}
+.btn-success:hover:not(:disabled){background:rgba(0,186,124,.1)}
+.status-bar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-radius:12px;font-size:14px;margin-top:12px}
+.status-bar.loading{background:rgba(29,155,240,.1);color:#1d9bf0}
+.status-bar.success{background:rgba(0,186,124,.1);color:#00ba7c}
+.status-bar.error{background:rgba(244,33,46,.1);color:#f4212e}
+.status-bar.warning{background:rgba(255,173,31,.1);color:#ffad1f}
+.spinner{width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:16px 0}
+.summary-item{background:#0f1419;border-radius:10px;padding:14px;text-align:center}
+.summary-item .label{font-size:12px;color:#71767b;margin-bottom:4px}
+.summary-item .value{font-size:18px;font-weight:700;color:#e7e9ea}
+.diag-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.diag-tag{padding:4px 10px;border-radius:9999px;font-size:12px;font-weight:500}
+.diag-tag.warn{background:rgba(255,173,31,.15);color:#ffad1f}
+.skills-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+.skills-table th,.skills-table td{padding:8px 12px;text-align:left;border-bottom:1px solid #2f3336}
+.skills-table th{color:#71767b;font-weight:600;font-size:12px;text-transform:uppercase}
+.skills-table tr:hover{background:rgba(255,255,255,.03)}
+.code-block{background:#0f1419;border:1px solid #2f3336;border-radius:8px;padding:12px;font-family:"SF Mono",Menlo,monospace;font-size:12px;color:#00ba7c;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+.collapse-toggle{background:none;border:none;color:#1d9bf0;font-size:13px;cursor:pointer;padding:4px 0;display:flex;align-items:center;gap:4px}
+.collapse-content{margin-top:8px;display:none}
+.collapse-content.open{display:block}
+.upload-filename{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;color:#00ba7c}
+input[type="file"]{display:none}
+.result-section{margin-top:16px}
+.result-section h3{font-size:15px;font-weight:600;margin-bottom:8px;color:#e7e9ea}
+</style>
+</head>
+<body>
+<div class="container">
+<header>
+<h1>JX3 JCL 转换工具</h1>
+<p>上传 JCL 战斗日志, 导出 jx3dps-online 兼容 JSON</p>
+</header>
+
+<div class="card">
+<div class="upload-area" id="uploadArea">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+<p>点击或拖拽 JCL 文件到此区域</p>
+<p class="hint">支持 .jcl / .txt 格式, 最大 25 MiB</p>
+</div>
+<input type="file" id="fileInput" accept=".jcl,.txt">
+<div id="fileName" class="upload-filename" style="display:none"></div>
+
+<div class="form-row">
+<div class="form-group">
+<label>战斗最大时长 (秒)</label>
+<input type="number" id="maxTime" placeholder="留空则使用完整时间" min="0" step="1">
+</div>
+<div class="form-group">
+<label>目标等级</label>
+<select id="targetLevel">
+<option value="134" selected>134</option>
+<option value="133">133</option>
+<option value="132">132</option>
+<option value="131">131</option>
+</select>
+</div>
+<div class="form-group">
+<label>玩家 ID (可选)</label>
+<input type="text" id="playerId" placeholder="留空则自动选择无方">
+</div>
+</div>
+
+<div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+<button class="btn btn-primary" id="convertBtn" disabled>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+开始转换
+</button>
+<button class="btn btn-success" id="downloadBtn" disabled>下载 JSON</button>
+<button class="btn btn-danger" id="copyBtn" disabled>复制 JSON</button>
+</div>
+</div>
+
+<div id="statusArea"></div>
+<div id="resultArea"></div>
+</div>
+
+<script>
+const uploadArea = document.getElementById('uploadArea')
+const fileInput = document.getElementById('fileInput')
+const fileName = document.getElementById('fileName')
+const convertBtn = document.getElementById('convertBtn')
+const downloadBtn = document.getElementById('downloadBtn')
+const copyBtn = document.getElementById('copyBtn')
+const statusArea = document.getElementById('statusArea')
+const resultArea = document.getElementById('resultArea')
+const maxTimeEl = document.getElementById('maxTime')
+const targetLevelEl = document.getElementById('targetLevel')
+const playerIdEl = document.getElementById('playerId')
+
+let selectedFile = null
+let lastResult = null
+
+uploadArea.addEventListener('click', () => fileInput.click())
+fileInput.addEventListener('change', handleFileSelect)
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover') })
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'))
+uploadArea.addEventListener('drop', e => {
+e.preventDefault()
+uploadArea.classList.remove('dragover')
+if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0])
+})
+convertBtn.addEventListener('click', doConvert)
+downloadBtn.addEventListener('click', downloadJSON)
+copyBtn.addEventListener('click', copyJSON)
+
+function handleFileSelect(e) { if(e.target.files.length) handleFile(e.target.files[0]) }
+
+function handleFile(file) {
+const ext = file.name.split('.').pop().toLowerCase()
+if(!['jcl','txt'].includes(ext)) { showStatus('error','不支持的文件格式, 仅支持 .jcl / .txt'); return }
+if(file.size > 25*1024*1024) { showStatus('error','文件大小超过 25 MiB 限制'); return }
+if(file.size === 0) { showStatus('error','文件为空'); return }
+selectedFile = file
+fileName.style.display = 'flex'
+fileName.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ${file.name} (${formatSize(file.size)})`
+convertBtn.disabled = false
+resultArea.innerHTML = ''
+statusArea.innerHTML = ''
+downloadBtn.disabled = true
+copyBtn.disabled = true
+}
+
+async function doConvert() {
+if(!selectedFile) return
+convertBtn.disabled = true
+downloadBtn.disabled = true
+copyBtn.disabled = true
+resultArea.innerHTML = ''
+showStatus('loading','正在解析 JCL 文件...')
+
+const formData = new FormData()
+formData.append('file', selectedFile)
+const maxTime = maxTimeEl.value
+if(maxTime) formData.append('max_time', maxTime)
+formData.append('target_level', targetLevelEl.value)
+const playerId = playerIdEl.value.trim()
+if(playerId) formData.append('player_id', playerId)
+
+try {
+const resp = await fetch('/v1/jcl/convert', { method:'POST', body:formData })
+if(!resp.ok) {
+const err = await resp.json().catch(()=>({}))
+throw new Error(err.detail || `HTTP ${resp.status}`)
+}
+const data = await resp.json()
+lastResult = data
+showStatus('success',`转换成功 — 玩家: ${data.player.name} (${data.player.kungfuName}), 战斗帧: ${data.battle.startFrame}-${data.battle.endFrame}`)
+downloadBtn.disabled = false
+copyBtn.disabled = false
+renderResult(data)
+} catch(err) {
+showStatus('error',`转换失败: ${err.message}`)
+lastResult = null
+} finally {
+convertBtn.disabled = !selectedFile
+}
+}
+
+function renderResult(data) {
+const p = data.player
+const b = data.battle
+const d = data.diagnostics
+const skillNames = Object.keys(data.data)
+let totalHits = 0, totalDamage = 0
+for(const [skill,statuses] of Object.entries(data.data)) {
+for(const [buff,detail] of Object.entries(statuses)) {
+totalHits += (detail.timeline||[]).length
+if(detail.hit_damage) totalDamage += (detail.hit_damage||0) * (detail.timeline||[]).length
+}
+}
+
+let html = `<div class="card result-section">`
+html += `<h3>玩家信息</h3>`
+html += `<div class="summary-grid">`
+html += `<div class="summary-item"><div class="label">角色名</div><div class="value">${escapeHtml(p.name)}</div></div>`
+html += `<div class="summary-item"><div class="label">心法</div><div class="value">${escapeHtml(p.kungfuName)}</div></div>`
+html += `<div class="summary-item"><div class="label">技能种类</div><div class="value">${skillNames.length}</div></div>`
+html += `<div class="summary-item"><div class="label">总命中次数</div><div class="value">${totalHits}</div></div>`
+html += `<div class="summary-item"><div class="label">战斗时间(帧)</div><div class="value">${b.endFrame - b.startFrame}</div></div>`
+html += `</div>`
+
+if(d.unknownSkillIds?.length || d.unknownBuffIds?.length || d.unknownTalentIds?.length) {
+html += `<div style="margin-top:12px">`
+if(d.unknownSkillIds?.length) html += `<div class="status-bar warning"><span>未识别技能 ID: ${d.unknownSkillIds.join(', ')}</span></div>`
+if(d.unknownBuffIds?.length) html += `<div class="status-bar warning"><span>未识别增益 ID: ${d.unknownBuffIds.join(', ')}</span></div>`
+if(d.unknownTalentIds?.length) html += `<div class="status-bar warning"><span>未识别奇穴 ID: ${d.unknownTalentIds.join(', ')}</span></div>`
+html += `</div>`
+}
+
+html += `<h3 style="margin-top:16px">技能明细</h3>`
+html += `<table class="skills-table"><thead><tr><th>技能</th><th>增益</th><th>命中次数</th><th>命中伤害</th><th>会心伤害</th><th>会心率</th></tr></thead><tbody>`
+for(const [skill,statuses] of Object.entries(data.data)) {
+for(const [buff,detail] of Object.entries(statuses)) {
+const count = (detail.timeline||[]).length
+const hitDmg = detail.hit_damage ? Math.round(detail.hit_damage) : '-'
+const critDmg = detail.critical_damage ? Math.round(detail.critical_damage) : '-'
+const critRate = detail.critical_strike != null ? (detail.critical_strike*100).toFixed(1)+'%' : '-'
+html += `<tr><td>${escapeHtml(skill)}</td><td>${escapeHtml(buff||'汇总')}</td><td>${count}</td><td>${hitDmg}</td><td>${critDmg}</td><td>${critRate}</td></tr>`
+}
+}
+html += `</tbody></table>`
+
+html += `<button class="collapse-toggle" onclick="this.nextElementSibling.classList.toggle('open')">查看原始 JSON 数据</button>`
+html += `<div class="collapse-content"><div class="code-block">${escapeHtml(JSON.stringify(data.data,null,2))}</div></div>`
+html += `</div>`
+
+resultArea.innerHTML = html
+}
+
+function downloadJSON() {
+if(!lastResult) return
+const blob = new Blob([JSON.stringify(lastResult.data,null,2)],{type:'application/json'})
+const url = URL.createObjectURL(blob)
+const a = document.createElement('a')
+a.href = url
+a.download = (selectedFile?.name||'jcl')+'.json'
+a.click()
+URL.revokeObjectURL(url)
+}
+
+async function copyJSON() {
+if(!lastResult) return
+try {
+await navigator.clipboard.writeText(JSON.stringify(lastResult.data,null,2))
+showStatus('success','JSON 已复制到剪贴板')
+} catch {
+showStatus('error','复制失败, 请尝试下载')
+}
+}
+
+function showStatus(type, message) {
+const icon = {loading:'<div class="spinner"></div>',success:'&#10003;',error:'&#10007;',warning:'&#9888;'}[type]||''
+statusArea.innerHTML = `<div class="status-bar ${type}">${icon} ${escapeHtml(message)}</div>`
+}
+
+function formatSize(bytes) { return bytes<1024*1024 ? (bytes/1024).toFixed(1)+' KB' : (bytes/(1024*1024)).toFixed(1)+' MB' }
+function escapeHtml(text) {
+const div = document.createElement('div')
+div.textContent = text
+return div.innerHTML
+}
+</script>
+</body>
+</html>
