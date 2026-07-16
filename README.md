@@ -63,7 +63,6 @@ jx3-jcl-service/
 │   ├── test_convert.py   # 转换逻辑测试
 │   ├── test_api.py       # HTTP 端点测试
 │   └── fixtures/         # 测试用 JCL 文件
-├── Dockerfile
 ├── pyproject.toml
 └── requirements.txt
 ```
@@ -74,13 +73,6 @@ jx3-jcl-service/
 - FastAPI
 - [Formulator](https://github.com/kerdevils/Formulator) (JCL 解析引擎)
 - 技能数据参考 [Generator](https://github.com/IcyTide/Generator)
-
-## Docker
-
-```bash
-docker build -t jx3-jcl-service -f Dockerfile ..
-docker run -p 8080:8080 jx3-jcl-service
-```
 
 ## 开发
 
