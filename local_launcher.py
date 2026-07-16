@@ -1,5 +1,6 @@
 """Windows launcher for the self-contained JCL converter."""
 
+import multiprocessing
 import os
 import socket
 import sys
@@ -59,4 +60,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

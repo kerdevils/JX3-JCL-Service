@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parent.resolve()
-FORMULATOR = ROOT.parent / "Formulator"
+FORMULATOR = ROOT / "Formulator"
 
 
 def main() -> None:

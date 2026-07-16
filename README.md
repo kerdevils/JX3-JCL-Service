@@ -15,22 +15,46 @@
 ## 快速启动
 
 ```bash
-pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8080
+pip install -r requirements-build.txt
+python build_local.py
 ```
+
+构建前请先关闭正在运行的 `dist/JX3-JCL-Converter.exe`；否则 Windows 会锁定输出文件并导致 PyInstaller 报 `WinError 5`。
 
 浏览器打开 `http://localhost:8080` 使用 Web 界面。
 
 ## Windows 本地版
 
-可构建无需安装 Python 的 Windows 一键版。打包机需要将 `Formulator/` 与本项目放在同一父目录。
+可构建无需安装 Python 的 Windows 一键版。构建脚本会直接使用仓库内的 `Formulator/`，无需另行检出或放置同级目录。
 
 ```bash
 pip install -r requirements-build.txt
 python build_local.py
 ```
 
+构建前请先关闭正在运行的 dist/JX3-JCL-Converter.exe；否则 Windows 会锁定输出文件并导致 PyInstaller 报 WinError 5。
+
 构建结果为单文件 `dist/JX3-JCL-Converter.exe`。将该文件发给其他 Windows 用户即可；双击后会启动本地服务并自动打开浏览器。使用期间请保持控制台窗口开启，按 `Ctrl+C` 停止服务。默认端口为 8090；若端口被占用，可在命令行运行 `set JX3_JCL_PORT=8091 && JX3-JCL-Converter.exe`。
+
+## 本地部署
+
+在项目根目录执行：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8080
+```
+
+浏览器访问 `http://localhost:8080`。停止服务按 `Ctrl+C`。
+
+构建 Windows 单文件版本：
+
+```powershell
+python -m pip install -r requirements-build.txt
+python build_local.py
+```
 
 ## API
 
@@ -59,6 +83,7 @@ jx3-jcl-service/
 │   ├── models.py      # Pydantic 数据模型
 │   └── static/        # Web 前端
 │       └── index.html
+├── Formulator/        # 内嵌并精简的 JCL 解析与计算运行时
 ├── tests/
 │   ├── test_convert.py   # 转换逻辑测试
 │   ├── test_api.py       # HTTP 端点测试
@@ -71,8 +96,14 @@ jx3-jcl-service/
 
 - Python >= 3.11
 - FastAPI
-- [Formulator](https://github.com/kerdevils/Formulator) (JCL 解析引擎)
+- 仓库内嵌的精简版 [Formulator](https://github.com/kerdevils/Formulator)（JCL 解析引擎）
 - 技能数据参考 [Generator](https://github.com/IcyTide/Generator)
+
+## Formulator 心法接入
+
+仓库内的 `Formulator/` 只保留 Web 转换服务所需的解析、计算框架和心法源码，不包含上游桌面端、数据生成、配装及发布工具。当前运行时只导入并注册无方（10627），其他保留的心法目录不会随服务启动而加载。
+
+后续接入其他心法时，在 `Formulator/kungfus/__init__.py` 中显式导入对应心法模块，并按无方的写法将其 `Kungfu` 实例加入 `SUPPORT_KUNGFU`。同时为该心法补充转换兼容逻辑和测试；不要恢复通配导入或一次性注册全部心法。
 
 ## 开发
 

@@ -26,7 +26,8 @@ _INTERNAL_SKILL_IDS = frozenset({
     22169, 38578, 38934, 38944, 38945, 38950, 38984, 38985,
     39088, 40790, 40793, 40803,
 })
-_ONLINE_OWNED_BUFF_IDS = frozenset({15436})
+_ONLINE_OWNED_BUFF_IDS = frozenset({15436, 15455})
+_STACK_LEVEL_COMPOSITE_DOT_IDS = frozenset({20052})
 
 
 def _get_normalized_level(skill_id: int, formulator_level: int) -> int:
@@ -45,8 +46,6 @@ def _normalize_damage_display(display: str) -> str:
         dot_id_str, dot_level_str, dot_rest = dot_info.split("-", 2)
         dot_id = int(dot_id_str)
         dot_level = int(dot_level_str)
-        new_dot_level = _get_normalized_level(dot_id, dot_level)
-        dot_key = f"{dot_name}#{dot_id}-{new_dot_level}-{dot_rest}"
 
         if "|" in rest:
             src_part, consume_part = rest.split("|", 1)
@@ -58,8 +57,22 @@ def _normalize_damage_display(display: str) -> str:
         src_id_str, src_level_str, src_rest = src_info.split("-", 2)
         src_id = int(src_id_str)
         src_level = int(src_level_str)
-        new_src_level = _get_normalized_level(src_id, src_level)
+        if dot_id in _STACK_LEVEL_COMPOSITE_DOT_IDS:
+            new_src_level = src_level
+        else:
+            new_src_level = _get_normalized_level(src_id, src_level)
         src_key = f"{src_name}#{src_id}-{new_src_level}-{src_rest}"
+
+        # Niluan calculator level is the effective source stack count, not
+        # Formulator internal DOT data level (10).
+        if dot_id in _STACK_LEVEL_COMPOSITE_DOT_IDS:
+            try:
+                new_dot_level = int(src_rest.split("-", 1)[0])
+            except (ValueError, IndexError):
+                new_dot_level = dot_level
+        else:
+            new_dot_level = _get_normalized_level(dot_id, dot_level)
+        dot_key = f"{dot_name}#{dot_id}-{new_dot_level}-{dot_rest}"
 
         if consume_part:
             cons_name, cons_info = consume_part.split("#", 1)
@@ -124,6 +137,27 @@ def _copy_detail(detail) -> dict:
     copied["timeline"] = list(detail_vars["timeline"])
     copied["gradients"] = dict(detail_vars["gradients"])
     return copied
+
+
+def _adapt_damage_record_for_jx3wufang(record: dict) -> dict:
+    """Apply target-calculator damage-level conventions before analysis."""
+    adapted = {}
+    for damage_tuple, statuses in record.items():
+        adapted_tuple = damage_tuple
+        damage_skill, source_skill, consume_skill = damage_tuple
+        if source_skill and damage_skill[0] in _STACK_LEVEL_COMPOSITE_DOT_IDS:
+            dot_id, _raw_level, dot_tick = damage_skill
+            dot_stack = int(source_skill[2])
+            adapted_tuple = (
+                (dot_id, dot_stack, dot_tick),
+                source_skill,
+                consume_skill,
+            )
+
+        adapted_statuses = adapted.setdefault(adapted_tuple, {})
+        for status_tuple, timeline in statuses.items():
+            adapted_statuses.setdefault(status_tuple, []).extend(timeline)
+    return adapted
 
 
 def _apply_paoyang(file_path: str, parser, player_id: str, target_id: str):
@@ -316,7 +350,9 @@ def convert_jcl(
         if max_time is not None
         else parser.duration
     )
-    record = parser.records[player_id][target_id]
+    record = _adapt_damage_record_for_jx3wufang(
+        parser.records[player_id][target_id]
+    )
 
     analyzer = Analyzer(
         kungfu=selected_player,

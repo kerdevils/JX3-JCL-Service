@@ -69,7 +69,7 @@ async def jcl_export(request: Request):
 def _validate_content(filename: str, size: int) -> None:
     if size == 0:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="File is empty.",
         )
     if size > MAX_FILE_SIZE:
@@ -121,13 +121,13 @@ async def jcl_convert(
 
     if target_level not in VALID_TARGET_LEVELS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid target_level={target_level}. Supported: {sorted(VALID_TARGET_LEVELS)}",
         )
 
     if max_time is not None and max_time <= 0:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="max_time must be greater than zero.",
         )
     tmp_path = os.path.join(
@@ -175,7 +175,7 @@ async def jcl_convert(
                 ) from exc
             except JclConvertError as exc:
                 raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=str(exc),
                 ) from exc
         finally:

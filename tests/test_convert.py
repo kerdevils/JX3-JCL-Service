@@ -8,7 +8,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.convert import (
     VALID_TARGET_LEVELS,
     JclConvertError,
+    _adapt_damage_record_for_jx3wufang,
     _merge_status_detail,
+    _normalize_damage_display,
     _normalize_status_display,
     convert_jcl,
 )
@@ -112,7 +114,7 @@ class TestConvertJcl:
             "unknownTalentIds": [],
         }
 
-    def test_strips_online_owned_hat_enchant_from_exported_statuses(self):
+    def test_strips_online_owned_enchants_from_exported_statuses(self):
         result = convert_jcl(TEST_JCL, target_level=134)
         statuses = [
             status
@@ -120,11 +122,80 @@ class TestConvertJcl:
             for status in skill_statuses
         ]
         assert all("#15436-" not in status for status in statuses)
+        assert all("#15455-" not in status for status in statuses)
         assert sum(
             len(detail["timeline"])
             for skill_statuses in result["data"].values()
             for detail in skill_statuses.values()
         ) == 648
+
+    def test_maps_niluan_outer_level_to_actual_stack(self):
+        result = convert_jcl(TEST_JCL, target_level=134)
+        niluan_keys = [
+            key
+            for key in result["data"]
+            if key.split("#", 1)[1].split("-", 1)[0] == "20052"
+        ]
+
+        assert niluan_keys
+        assert {key.split("#20052-", 1)[1].split("-", 1)[0] for key in niluan_keys} == {"7", "8"}
+        assert all("(#27560-10-" in key for key in niluan_keys)
+        seven_layer_details = [
+            detail
+            for key in niluan_keys
+            if "#20052-7-" in key
+            for detail in result["data"][key].values()
+        ]
+        assert len(seven_layer_details) == 1
+        assert seven_layer_details[0]["hit_damage"] == 7994
+        assert seven_layer_details[0]["critical_damage"] == 13986
+        assert sum(
+            len(detail["timeline"])
+            for key in niluan_keys
+            for detail in result["data"][key].values()
+        ) > 0
+
+
+@pytest.mark.parametrize(
+    "display",
+    [
+        "niluan(DOT)#20052-10-1(source#27560-10-8)",
+        "niluan(DOT)#20052-10-1(source#27560-10-8|consume#32841-3-1)",
+    ],
+)
+def test_niluan_composite_display_uses_source_stack_and_maps_consume(display):
+    expected = display.replace("#20052-10-1", "#20052-8-1").replace("#32841-3-1", "#32841-2-1")
+    assert _normalize_damage_display(display) == expected
+
+def test_stack_level_dot_adapter_preserves_source_consume_and_merges_collisions():
+    status = (((20699, 1, 1),), tuple(), tuple())
+    source = (27560, 10, 8)
+    consume = (32841, 3, 1)
+    record = {
+        ((20052, 10, 1), source, consume): {status: [(1, False, 100)]},
+        ((20052, 8, 1), source, consume): {status: [(2, True, 200)]},
+        ((33061, 1, 1), (40212, 1, 1), tuple()): {
+            status: [(3, False, 300)]
+        },
+    }
+
+    adapted = _adapt_damage_record_for_jx3wufang(record)
+
+    niluan_key = ((20052, 8, 1), source, consume)
+    assert adapted[niluan_key][status] == [
+        (1, False, 100),
+        (2, True, 200),
+    ]
+    assert ((33061, 1, 1), (40212, 1, 1), tuple()) in adapted
+
+
+def test_normalizes_configured_non_dot_skill_level():
+    assert _normalize_damage_display("po#32841-3") == "po#32841-2"
+
+
+def test_strips_all_online_owned_enchants_from_status_display():
+    display = "hat#15436-17-1,normal#20699-1-1,waist#15455-1-1||"
+    assert _normalize_status_display(display) == "normal#20699-1-1||"
 
 
 def test_normalized_status_collision_merges_details():

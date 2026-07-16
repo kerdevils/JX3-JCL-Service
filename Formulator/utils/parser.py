@@ -1,10 +1,13 @@
 from collections import defaultdict
 
 from copy import deepcopy
-from typing import Union
+from typing import Dict, List, Tuple, Union
 
+from base.attribute import Attribute
 from base.constant import FRAME_PER_SECOND
-from kungfus import *
+from base.gain import Gain
+from base.recipe import Recipe
+from kungfus import Kungfu, SUPPORT_KUNGFU
 from utils.lua import parse_lua
 
 FRAME_TYPE, SECOND_TYPE = int, int
