@@ -13,3 +13,4 @@ resp*.json
 build/
 dist/
 *.spec
+Formulator/lupa-*.whl

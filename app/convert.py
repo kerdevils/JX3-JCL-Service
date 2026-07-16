@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Set
 
 _FORMULATOR_PATH = os.environ.get(
     "FORMULATOR_PATH",
-    os.path.join(os.path.dirname(__file__), "..", "..", "Formulator"),
+    os.path.join(os.path.dirname(__file__), "..", "Formulator"),
 )
 _FORMULATOR_PATH = os.path.abspath(_FORMULATOR_PATH)
 
@@ -239,6 +239,11 @@ def convert_jcl(
             f"Invalid target_level={target_level}. Supported: {sorted(VALID_TARGET_LEVELS)}"
         )
 
+    if max_time is not None and max_time <= 0:
+        raise JclConvertError(
+            f"Invalid max_time={max_time}. It must be greater than zero."
+        )
+
     diagnostics = _DiagnosticsCollector()
 
     parser = Parser()
@@ -306,7 +311,11 @@ def convert_jcl(
             f"Available targets: {available_targets}"
         )
 
-    end_time = max_time if max_time is not None else parser.duration
+    end_time = (
+        min(max_time, parser.duration)
+        if max_time is not None
+        else parser.duration
+    )
     record = parser.records[player_id][target_id]
 
     analyzer = Analyzer(
@@ -375,6 +384,7 @@ def convert_jcl(
         "battle": {
             "startFrame": parser.start_frame,
             "endFrame": parser.end_frame,
+            "analysisSeconds": max(0.0, float(end_time - min_time)),
         },
         "data": result,
         "diagnostics": {

@@ -1,9 +1,7 @@
-import logging
+import asyncio
 import os
 import tempfile
 import uuid
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
@@ -11,13 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.convert import JclConvertError, VALID_TARGET_LEVELS, convert_jcl
+from app.convert import JclConvertError, VALID_TARGET_LEVELS
 from app.models import ConvertResponse, ErrorDetail
+from app.process_runner import ConversionTimedOut, run_conversion_in_subprocess
 
 MAX_FILE_SIZE = 50 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".jcl", ".txt"}
-_executor = ThreadPoolExecutor(max_workers=2)
-logger = logging.getLogger("jx3_jcl_service")
+_conversion_slots = asyncio.Semaphore(2)
+CONVERSION_TIMEOUT_SECONDS = 90
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -31,21 +30,20 @@ def _validate_before_read(filename: str) -> None:
         )
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    yield
-    _executor.shutdown(wait=True)
-
-
 app = FastAPI(
     title="无方 JCL 转换服务",
     version="0.1.0",
-    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        origin.strip()
+        for origin in os.environ.get(
+            "JX3_JCL_ALLOWED_ORIGINS", "http://localhost:3000"
+        ).split(",")
+        if origin.strip()
+    ],
     allow_credentials=False,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
@@ -81,25 +79,22 @@ def _validate_content(filename: str, size: int) -> None:
         )
 
 
-def _run_convert(
-    tmp_path: str,
-    player_id: str,
-    target_level: int,
-    max_time: float,
-) -> dict:
-    try:
-        return convert_jcl(
-            file_path=tmp_path,
-            player_id=player_id,
-            target_id="",
-            target_level=target_level,
-            max_time=max_time,
-        )
-    except JclConvertError:
-        raise
-    except Exception as exc:
-        logger.exception("Unexpected error during JCL conversion")
-        raise JclConvertError("Internal conversion error. Check server logs.") from exc
+async def _read_upload(upload: UploadFile, filename: str) -> bytes:
+    chunks = []
+    total = 0
+    while True:
+        chunk = await upload.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File exceeds maximum size of {MAX_FILE_SIZE // (1024 * 1024)} MiB.",
+            )
+        chunks.append(chunk)
+    _validate_content(filename, total)
+    return b"".join(chunks)
 
 
 @app.post(
@@ -107,6 +102,8 @@ def _run_convert(
     response_model=ConvertResponse,
     responses={
         413: {"model": ErrorDetail},
+        429: {"model": ErrorDetail},
+        504: {"model": ErrorDetail},
         415: {"model": ErrorDetail},
         422: {"model": ErrorDetail},
     },
@@ -120,8 +117,7 @@ async def jcl_convert(
     filename = file.filename or "upload.jcl"
     _validate_before_read(filename)
 
-    content = await file.read()
-    _validate_content(filename, len(content))
+    content = await _read_upload(file, filename)
 
     if target_level not in VALID_TARGET_LEVELS:
         raise HTTPException(
@@ -129,34 +125,69 @@ async def jcl_convert(
             detail=f"Invalid target_level={target_level}. Supported: {sorted(VALID_TARGET_LEVELS)}",
         )
 
+    if max_time is not None and max_time <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="max_time must be greater than zero.",
+        )
     tmp_path = os.path.join(
         tempfile.gettempdir(), f"jx3-jcl-{uuid.uuid4().hex}.jcl"
+    )
+    result_path = os.path.join(
+        tempfile.gettempdir(), f"jx3-jcl-{uuid.uuid4().hex}.json"
     )
     try:
         with open(tmp_path, "wb") as f:
             f.write(content)
 
-        loop = __import__("asyncio").get_event_loop()
+        acquired = False
         try:
-            result = await loop.run_in_executor(
-                _executor,
-                _run_convert,
-                tmp_path,
-                player_id,
-                target_level,
-                max_time,
-            )
-        except JclConvertError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(exc),
-            ) from exc
+            try:
+                await asyncio.wait_for(_conversion_slots.acquire(), timeout=1)
+                acquired = True
+            except asyncio.TimeoutError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Too many conversions are running. Please retry shortly.",
+                ) from exc
+
+            try:
+                conversion_task = asyncio.create_task(
+                    asyncio.to_thread(
+                        run_conversion_in_subprocess,
+                        tmp_path,
+                        result_path,
+                        player_id,
+                        target_level,
+                        max_time,
+                        CONVERSION_TIMEOUT_SECONDS,
+                    )
+                )
+                try:
+                    result = await asyncio.shield(conversion_task)
+                except asyncio.CancelledError:
+                    await conversion_task
+                    raise
+            except ConversionTimedOut as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                    detail="JCL conversion timed out.",
+                ) from exc
+            except JclConvertError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=str(exc),
+                ) from exc
+        finally:
+            if acquired:
+                _conversion_slots.release()
         return result
     finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+        for path in (tmp_path, result_path):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
 
 @app.get("/v1/health")

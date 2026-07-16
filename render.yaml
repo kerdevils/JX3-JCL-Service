@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: jx3-jcl-service
+    runtime: docker
+    healthCheckPath: /v1/health
+    envVars:
+      - key: JX3_JCL_ALLOWED_ORIGINS
+        sync: false

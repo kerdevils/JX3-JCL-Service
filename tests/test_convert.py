@@ -26,6 +26,7 @@ class TestConvertJcl:
         assert result["player"]["kungfuName"] == "无方"
         assert result["player"]["name"] != "无方"
         assert "battle" in result
+        assert result["battle"]["analysisSeconds"] > 0
         assert result["battle"]["startFrame"] >= 0
         assert result["battle"]["endFrame"] > result["battle"]["startFrame"]
         assert "data" in result
@@ -158,15 +159,17 @@ def test_normalized_status_collision_merges_details():
     assert existing["expected_damage"] == pytest.approx(520 / 3)
     assert existing["gradients"] == {"overcome": 7.0}
 
-    def test_throws_on_nonexistent_file(self):
-        with pytest.raises(JclConvertError, match="JCL parse failed"):
-            convert_jcl("/nonexistent/path.jcl", target_level=134)
+
+def test_throws_on_nonexistent_file():
+    with pytest.raises(JclConvertError, match="JCL parse failed"):
+        convert_jcl("/nonexistent/path.jcl", target_level=134)
 
 
 class TestJclWithMaxTime:
     def test_truncates_timeline(self):
         result_full = convert_jcl(TEST_JCL, target_level=134)
         result_trunc = convert_jcl(TEST_JCL, target_level=134, max_time=4.0)
+        assert result_trunc["battle"]["analysisSeconds"] == 4.0
 
         def count_hits(r):
             return sum(
@@ -176,3 +179,14 @@ class TestJclWithMaxTime:
             )
 
         assert count_hits(result_trunc) <= count_hits(result_full)
+
+    def test_clamps_max_time_to_battle_duration(self):
+        result_full = convert_jcl(TEST_JCL, target_level=134)
+        result_clamped = convert_jcl(TEST_JCL, target_level=134, max_time=99999)
+        assert result_clamped["battle"]["analysisSeconds"] == (
+            result_full["battle"]["analysisSeconds"]
+        )
+
+    def test_rejects_non_positive_max_time(self):
+        with pytest.raises(JclConvertError, match="max_time"):
+            convert_jcl(TEST_JCL, target_level=134, max_time=0)

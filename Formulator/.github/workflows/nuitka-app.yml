@@ -1,0 +1,53 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Nuitka Packaging
+
+on:
+  push:
+    branches: [ "master", "exp" ]
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      PACKAGENAME: Formulator_windows_x64
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyside6==6.7.2
+    - uses: Nuitka/Nuitka-Action@v1.1
+      with:
+        nuitka-version: 2.3.11
+        script-name: qt/app.py
+        standalone: true
+        enable-plugins: pyside6
+        disable-console: true
+        windows-icon-from-ico: assets/icon.ico
+        nofollow-import-to: http,email
+        include-data-dir: assets=assets/
+    - name: Build
+      run: |
+        mv build/app.dist Formulator
+        rm Formulator/qt6network.dll
+        rm Formulator/qt6pdf.dll
+        rm Formulator/libcrypto-3.dll
+        rm Formulator/unicodedata.pyd
+        rm Formulator/PySide6/QtNetwork.pyd
+        7z a -t7z -r "$($Env:PACKAGENAME + '.7z')" "Formulator"
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.PACKAGENAME }}
+        path: Formulator

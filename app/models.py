@@ -12,6 +12,7 @@ class PlayerInfo(BaseModel):
 class BattleInfo(BaseModel):
     startFrame: int
     endFrame: int
+    analysisSeconds: float
 
 
 class Diagnostics(BaseModel):
