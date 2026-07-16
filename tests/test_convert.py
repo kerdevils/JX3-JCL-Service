@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.convert import (
     VALID_TARGET_LEVELS,
     JclConvertError,
-    _adapt_damage_record_for_jx3wufang,
     _merge_status_detail,
     _normalize_damage_display,
     _normalize_status_display,
@@ -139,7 +138,16 @@ class TestConvertJcl:
 
         assert niluan_keys
         assert {key.split("#20052-", 1)[1].split("-", 1)[0] for key in niluan_keys} == {"7", "8"}
-        assert all("(#27560-10-" in key for key in niluan_keys)
+        assert all(
+            f"(#27560-{stack}-{stack}" in key
+            for key in niluan_keys
+            for stack in [key.split("#20052-", 1)[1].split("-", 1)[0]]
+        )
+        assert all(
+            "#20699-" not in status
+            for key in niluan_keys
+            for status in result["data"][key]
+        )
         seven_layer_details = [
             detail
             for key in niluan_keys
@@ -147,13 +155,13 @@ class TestConvertJcl:
             for detail in result["data"][key].values()
         ]
         assert len(seven_layer_details) == 1
-        assert seven_layer_details[0]["hit_damage"] == 7994
-        assert seven_layer_details[0]["critical_damage"] == 13986
+        assert seven_layer_details[0]["hit_damage"] == 8302
+        assert seven_layer_details[0]["critical_damage"] == 14525
         assert sum(
             len(detail["timeline"])
             for key in niluan_keys
             for detail in result["data"][key].values()
-        ) > 0
+        ) == 44
 
 
 @pytest.mark.parametrize(
@@ -164,29 +172,13 @@ class TestConvertJcl:
     ],
 )
 def test_niluan_composite_display_uses_source_stack_and_maps_consume(display):
-    expected = display.replace("#20052-10-1", "#20052-8-1").replace("#32841-3-1", "#32841-2-1")
+    expected = (
+        display
+        .replace("#20052-10-1", "#20052-8-1")
+        .replace("#27560-10-8", "#27560-8-8")
+        .replace("#32841-3-1", "#32841-2-1")
+    )
     assert _normalize_damage_display(display) == expected
-
-def test_stack_level_dot_adapter_preserves_source_consume_and_merges_collisions():
-    status = (((20699, 1, 1),), tuple(), tuple())
-    source = (27560, 10, 8)
-    consume = (32841, 3, 1)
-    record = {
-        ((20052, 10, 1), source, consume): {status: [(1, False, 100)]},
-        ((20052, 8, 1), source, consume): {status: [(2, True, 200)]},
-        ((33061, 1, 1), (40212, 1, 1), tuple()): {
-            status: [(3, False, 300)]
-        },
-    }
-
-    adapted = _adapt_damage_record_for_jx3wufang(record)
-
-    niluan_key = ((20052, 8, 1), source, consume)
-    assert adapted[niluan_key][status] == [
-        (1, False, 100),
-        (2, True, 200),
-    ]
-    assert ((33061, 1, 1), (40212, 1, 1), tuple()) in adapted
 
 
 def test_normalizes_configured_non_dot_skill_level():
@@ -197,6 +189,50 @@ def test_strips_all_online_owned_enchants_from_status_display():
     display = "hat#15436-17-1,normal#20699-1-1,waist#15455-1-1||"
     assert _normalize_status_display(display) == "normal#20699-1-1||"
 
+
+def test_excludes_selected_buff_from_all_status_sections():
+    display = "current#20699-1-1,other#20680-1-1|snapshot#20699-1-1|target#20699-1-1"
+    assert _normalize_status_display(display) == display
+    assert _normalize_status_display(
+        display,
+        excluded_buff_ids=frozenset({20699}),
+    ) == "other#20680-1-1||"
+
+
+def test_excluded_status_collision_merges_details():
+    current_status = "养荣#20699-1-1,other#20680-1-1|snapshot#29528-8-10|"
+    snapshot_status = "other#20680-1-1|养荣#20699-1-1,snapshot#29528-8-10|"
+    excluded = frozenset({20699})
+    assert _normalize_status_display(
+        current_status, excluded_buff_ids=excluded
+    ) == _normalize_status_display(
+        snapshot_status, excluded_buff_ids=excluded
+    )
+
+    existing = {
+        "timeline": [[1, False, 100]],
+        "expected_count": 1,
+        "hit_damage": 100.0,
+        "critical_damage": 200.0,
+        "critical_strike": 0.2,
+        "expected_damage": 120.0,
+        "gradients": {"overcome": 2.0},
+    }
+    incoming = {
+        "timeline": [[2, True, 200]],
+        "expected_count": 1,
+        "hit_damage": 160.0,
+        "critical_damage": 260.0,
+        "critical_strike": 0.4,
+        "expected_damage": 200.0,
+        "gradients": {"overcome": 5.0},
+    }
+    _merge_status_detail(existing, incoming)
+    assert existing["timeline"] == [[1, False, 100], [2, True, 200]]
+    assert existing["expected_count"] == 2
+    assert existing["hit_damage"] == 130.0
+    assert existing["critical_damage"] == 230.0
+    assert existing["gradients"] == {"overcome": 7.0}
 
 def test_normalized_status_collision_merges_details():
     assert _normalize_status_display("大附魔帽#15436-17-1,养荣#20699-1-1||") == "养荣#20699-1-1||"

@@ -28,6 +28,7 @@ _INTERNAL_SKILL_IDS = frozenset({
 })
 _ONLINE_OWNED_BUFF_IDS = frozenset({15436, 15455})
 _STACK_LEVEL_COMPOSITE_DOT_IDS = frozenset({20052})
+_NILUAN_EXCLUDED_STATUS_BUFF_IDS = frozenset({20699})
 
 
 def _get_normalized_level(skill_id: int, formulator_level: int) -> int:
@@ -57,8 +58,13 @@ def _normalize_damage_display(display: str) -> str:
         src_id_str, src_level_str, src_rest = src_info.split("-", 2)
         src_id = int(src_id_str)
         src_level = int(src_level_str)
+        stack_level = None
         if dot_id in _STACK_LEVEL_COMPOSITE_DOT_IDS:
-            new_src_level = src_level
+            try:
+                stack_level = int(src_rest.split("-", 1)[0])
+            except (ValueError, IndexError):
+                pass
+            new_src_level = stack_level if stack_level is not None else src_level
         else:
             new_src_level = _get_normalized_level(src_id, src_level)
         src_key = f"{src_name}#{src_id}-{new_src_level}-{src_rest}"
@@ -66,10 +72,7 @@ def _normalize_damage_display(display: str) -> str:
         # Niluan calculator level is the effective source stack count, not
         # Formulator internal DOT data level (10).
         if dot_id in _STACK_LEVEL_COMPOSITE_DOT_IDS:
-            try:
-                new_dot_level = int(src_rest.split("-", 1)[0])
-            except (ValueError, IndexError):
-                new_dot_level = dot_level
+            new_dot_level = stack_level if stack_level is not None else dot_level
         else:
             new_dot_level = _get_normalized_level(dot_id, dot_level)
         dot_key = f"{dot_name}#{dot_id}-{new_dot_level}-{dot_rest}"
@@ -94,7 +97,10 @@ def _normalize_damage_display(display: str) -> str:
     return f"{name}#{skill_id}-{new_level}"
 
 
-def _normalize_status_display(display: str) -> str:
+def _normalize_status_display(
+    display: str,
+    excluded_buff_ids: frozenset[int] = frozenset(),
+) -> str:
     """Remove buffs that JX3ONLINE already models as equipment attributes."""
     sections = []
     for section in display.split("|"):
@@ -105,7 +111,10 @@ def _normalize_status_display(display: str) -> str:
             except (IndexError, ValueError):
                 tokens.append(token)
                 continue
-            if buff_id not in _ONLINE_OWNED_BUFF_IDS:
+            if (
+                buff_id not in _ONLINE_OWNED_BUFF_IDS
+                and buff_id not in excluded_buff_ids
+            ):
                 tokens.append(token)
         sections.append(",".join(tokens))
     return "|".join(sections)
@@ -138,26 +147,6 @@ def _copy_detail(detail) -> dict:
     copied["gradients"] = dict(detail_vars["gradients"])
     return copied
 
-
-def _adapt_damage_record_for_jx3wufang(record: dict) -> dict:
-    """Apply target-calculator damage-level conventions before analysis."""
-    adapted = {}
-    for damage_tuple, statuses in record.items():
-        adapted_tuple = damage_tuple
-        damage_skill, source_skill, consume_skill = damage_tuple
-        if source_skill and damage_skill[0] in _STACK_LEVEL_COMPOSITE_DOT_IDS:
-            dot_id, _raw_level, dot_tick = damage_skill
-            dot_stack = int(source_skill[2])
-            adapted_tuple = (
-                (dot_id, dot_stack, dot_tick),
-                source_skill,
-                consume_skill,
-            )
-
-        adapted_statuses = adapted.setdefault(adapted_tuple, {})
-        for status_tuple, timeline in statuses.items():
-            adapted_statuses.setdefault(status_tuple, []).extend(timeline)
-    return adapted
 
 
 def _apply_paoyang(file_path: str, parser, player_id: str, target_id: str):
@@ -350,9 +339,7 @@ def convert_jcl(
         if max_time is not None
         else parser.duration
     )
-    record = _adapt_damage_record_for_jx3wufang(
-        parser.records[player_id][target_id]
-    )
+    record = parser.records[player_id][target_id]
 
     analyzer = Analyzer(
         kungfu=selected_player,
@@ -381,6 +368,12 @@ def convert_jcl(
         result: Dict[str, dict] = {}
         for damage_display, statuses in analyzer.details.items():
             norm_key = _normalize_damage_display(damage_display)
+            damage_id = int(damage_display.split("#", 1)[1].split("-", 1)[0])
+            excluded_buff_ids = (
+                _NILUAN_EXCLUDED_STATUS_BUFF_IDS
+                if damage_id in _STACK_LEVEL_COMPOSITE_DOT_IDS
+                else frozenset()
+            )
             # Analyzer's empty key is an aggregate. Keep it only when it is
             # the sole status; otherwise it would duplicate every timeline.
             status_items = [
@@ -390,7 +383,10 @@ def convert_jcl(
             ]
             output_statuses = result.setdefault(norm_key, {})
             for status_display, detail in status_items:
-                norm_status = _normalize_status_display(status_display)
+                norm_status = _normalize_status_display(
+                    status_display,
+                    excluded_buff_ids=excluded_buff_ids,
+                )
                 detail_vars = _copy_detail(detail)
                 if norm_status in output_statuses:
                     _merge_status_detail(output_statuses[norm_status], detail_vars)
